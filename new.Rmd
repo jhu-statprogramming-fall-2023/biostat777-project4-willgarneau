@@ -1,0 +1,354 @@
+---
+title: "Starbucks Analysis"
+output: 
+  flexdashboard::flex_dashboard:
+    theme: 
+      version: 4
+      bootswatch: minty
+    orientation: columns
+    vertical_layout: fill
+    source_code: embed
+runtime: shiny
+self_contained: false
+---
+
+
+```{r echo = FALSE, message = FALSE, results="show", warning = FALSE, eval=TRUE}
+if(!require(flexdashboard)){
+  install.packages("flexdashboard",repos='http://cran.us.r-project.org')
+  library(flexdashboard)
+}
+if(!require(tidyverse)){
+  install.packages("tidyverse",repos='http://cran.us.r-project.org')
+  library(tidyverse)
+}
+if(!require(readr)){
+  install.packages("readr",repos='http://cran.us.r-project.org')
+  library(readr)
+}
+if(!require(here)){
+  install.packages("here",repos='http://cran.us.r-project.org')
+  library(here)
+}
+if(!require(purrr)){
+  install.packages("purrr",repos='http://cran.us.r-project.org')
+  library(purrr)
+}
+if(!require(gridExtra)){
+  install.packages("gridExtra",repos='http://cran.us.r-project.org')
+  library(gridExtra)
+}
+if(!require(shiny)){
+  install.packages("shiny",repos='http://cran.us.r-project.org')
+  library(shiny)
+}
+if(!require(DT)){
+  install.packages("DT",repos='http://cran.us.r-project.org')
+  library(DT)
+}
+
+```
+
+
+
+```{css}
+.datatables.html-widget.html-widget-static-bound { 
+  height: auto !important;
+  width: 90vw !important;
+}
+.dataTables_scrollBody {
+  height: unset !important;
+}
+```
+
+
+
+```{r echo = FALSE, message = FALSE, results="show", warning = FALSE, eval=TRUE}
+if (!file.exists(here("data", "starbucks.csv"))){
+    url_csv <- "https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-12-21/starbucks.csv"
+    starbucks <- readr::read_csv(url_csv)
+    }
+```
+
+```{r echo = FALSE, message = FALSE, results="show", warning = FALSE, eval=TRUE}
+starbucks <- starbucks %>% 
+             mutate(`calories/ml` = calories / serv_size_m_l)
+
+starbucks <- starbucks %>% 
+             mutate(`caffeine/ml` = caffeine_mg / serv_size_m_l)
+```
+
+```{r echo = FALSE, message = FALSE, results="show", warning = FALSE, eval=TRUE}
+drinks <- starbucks %>%
+  mutate(type = case_when(
+    str_detect(product_name, regex("chocolate", ignore_case = TRUE)) ~ "Chocolate",
+    str_detect(product_name, "Mocha") ~ "Mocha",
+    str_detect(product_name, regex("coffee", ignore_case = TRUE)) ~ "Coffee",
+    str_detect(product_name, regex("espresso", ignore_case = TRUE)) ~ "Espresso",
+    str_detect(product_name, "Latte") ~ "Latte",
+    TRUE ~ "Other"
+  ))
+```
+
+```{r echo = FALSE, message = FALSE, results="show", warning = FALSE, eval=TRUE}
+drinks <- drinks[!(
+  drinks$size == "solo" |
+  drinks$size == "doppio" |
+  drinks$size == "triple" |
+  drinks$size == "quad" |
+  drinks$size == "1 scoop" |
+  drinks$size == "1 shot"), ]
+```
+
+
+```{r echo = FALSE, message = FALSE, results="show", warning = FALSE, eval=TRUE}
+rsquared <- drinks %>%
+  filter(!is.na(calories) & !is.na(serv_size_m_l)) %>%  
+  group_by(type) %>%
+  filter(n() > 2) %>%  
+  ungroup() %>%
+  split(.$type) %>%
+  map(safely(~lm(calories ~ serv_size_m_l, data = .))) %>% 
+  map("result") %>%
+  map_dfr(~if (is.null(.x)) { NA_real_ } else { summary(.x)$r.squared })
+```
+
+```{r echo = FALSE, message = FALSE, results="show", warning = FALSE, eval=TRUE}
+report <- drinks %>% 
+  group_by(type) %>%
+  summarize(mean_calories = mean(calories, na.rm = TRUE),
+            mean_caffeine = mean(caffeine_mg, na.rm = TRUE),
+            mean_serv_size_ml = mean(serv_size_m_l, na.rm = TRUE))
+```
+
+
+
+# About {data-icon="ion-ios-information-outline"}
+
+## Column {data-width="600"}
+
+### About the Data
+
+The purpose of the dashboard is to study the variation in nutritional characteristics of different types of beverages at Starbucks.
+
+We will use the [`starbucks`](https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-12-21/starbucks.csv) dataset available at TidyTuesday
+
+<html>
+<head>
+    <style>
+        iframe {
+            border: 1px solid #464646;
+            }
+    </style>
+</head>
+<body>
+    <iframe
+        width="640"
+        height="480"
+        src="https://www.youtube.com/embed/EpSALYc4cew"
+        frameborder="0"
+        allow="autoplay; encrypted-media"
+        allowfullscreen>
+    </iframe>
+</body>
+</html>
+
+
+# The Data {data-icon="ion-android-folder-open"}
+
+## Row {data-height="1000"}
+
+### The Data
+
+The data consists of nutrition information for various types of drinks served at Starbucks cafes.
+
+```{r}
+knitr::kable(starbucks)
+```
+
+# History {data-icon="ion-android-list"}
+
+## Row {.tabset}
+
+### History of Starbucks
+
+Starbucks was founded in 1971.<br /><br />
+Source: Wikipedia (https://en.wikipedia.org/wiki/Starbucks)<br />
+```{r}
+```
+
+### Number of locations
+
+There are 35711 stores as of November 2022.<br /><br />
+Source: Wikipedia (https://en.wikipedia.org/wiki/Starbucks)<br />
+
+# Logo {data-icon="ion-podium"}
+
+```{r, echo=FALSE}
+knitr::include_graphics("https://www.thebrandingjournal.com/wp-content/uploads/2023/03/Starbucks-logo-evolution.jpg")
+```
+
+
+# Interactive Content 1 {data-icon=ion-wrench}
+```{r}
+drinks_sampled <- drinks[sample(nrow(drinks), min(2000, nrow(drinks))),pageLength = 10 ]
+
+ui <- fluidPage(
+ tags$head(
+    tags$style(HTML("
+      .datatables.html-widget.html-widget-static-bound { 
+        height: auto !important;
+        width: 90vw !important;
+      }
+      .dataTables_scrollBody {
+        height: unset !important;
+      }
+    "))
+  ),
+  sidebarLayout(
+    sidebarPanel(
+      selectInput("dataset", "Choose a dataset:",
+                  choices = c("None", "drinks")),
+      conditionalPanel(
+        'input.dataset === "drinks"',
+        checkboxGroupInput("show_vars", "Columns in drinks to show:",
+                           names(drinks), selected = "product_name")
+      )
+    ),
+    mainPanel(
+      DTOutput("mytable1")
+    )
+  )
+)
+
+server <- function(input, output) {
+  output$mytable1 <- DT::renderDataTable({
+    if(input$dataset == "drinks") {
+      DT::datatable(drinks_sampled[, input$show_vars, drop = FALSE], 
+                  options = list(
+    orderClasses = TRUE,
+    lengthMenu = c(10, 20, 100),
+    pageLength = 10,
+    ordering = TRUE,
+    scrollX = TRUE,
+    searching = TRUE,
+    autoWidth = FALSE,
+    dom = 'lfrtip',
+    stateSave = TRUE,
+    buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
+    fixedHeader = TRUE))
+    }
+  })
+}
+
+shinyApp(ui, server)
+
+```
+
+
+# Interactive Content 2 {data-icon=ion-android-options}
+
+## Row {data-height="600"}
+
+### Calories
+
+Set the minimum and maximum values to see how many Starbucks drinks have that many calories
+
+
+```{r}
+sliderInput("min_cals", label = "Min calories",
+            min = 0, max = 999, value = 0, step = 50)
+
+sliderInput("max_cals", label = "Max calories",
+            min = 0, max = 999, value = 100, step = 50)
+```
+
+## Row {data-height="400"}
+
+### Results
+
+```{r}
+renderPlot({
+    filtered_data <- starbucks$calories[starbucks$calories >= input$min_cals & starbucks$calories <= input$max_cals]
+  hist(filtered_data, 
+       xlab = "Calories", ylab = "Number of drinks")
+})
+```
+
+# Analysis {data-icon="ion-podium"}
+
+## Row {data-height="600"}
+
+### Chart 1
+
+```{r}
+ggplot(drinks) +
+ aes(x = size, y = calories) +
+ geom_boxplot(fill = "#112446") +
+ labs(x = "Size of drink", 
+ y = "Total Calories", title = "Trends in calories by size of drink", subtitle = "An analysis of Starbucks products") +
+ ggthemes::theme_base()
+```
+
+
+## Row {data-height="400"}
+
+### Chart 2
+
+```{r}
+ggplot(drinks) +
+  aes(x = `calories/ml`, fill = type, colour = type) +
+  geom_histogram(bins = 30L) +
+  scale_fill_hue(direction = 1) +
+  scale_color_hue(direction = 1) +
+  labs(
+    x = "Calorie/ml",
+    y = "Number of drinks",
+    title = "Caloric density by different types of drinks",
+    subtitle = "Nutritional factors of Starbucks drinks"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 17L,
+    face = "bold",
+    hjust = 0.5),
+    plot.subtitle = element_text(face = "italic",
+    hjust = 0.5)
+  ) +
+  facet_wrap(vars(type))
+```
+
+
+
+### Chart 3
+
+```{r}
+ggplot(report, aes(x = type, y = mean_caffeine, fill = mean_calories)) +
+  geom_col() +
+  scale_fill_gradient() +
+  labs(
+    x = "Type of drink",
+    y = "Mean caffeine (mg)",
+    title = "Differences in mean caffeine and calories by type of drink",
+    subtitle = "Nutritional factors of Starbucks drinks"
+  ) +
+  theme_minimal()
+
+```
+
+# Credits {data-orientation="rows"}
+
+## Row {data-height="600"}
+
+### Sources of code
+
+```{r}
+```
+
+<https://bookdown.org/yihui/rmarkdown-cookbook/kable.html><br />
+<https://www.antvaset.com/c/21g4zwwx48><br />
+<https://acolumbus.shinyapps.io/biostat840-project4/><br />
+<https://github.com/rstudio/shiny-examples/blob/main/012-datatables/app.R><br />
+<https://shiny.posit.co/r/articles/build/datatables/><br />
+<https://github.com/rstudio/DT/issues/951><br />
+<https://chat.openai.com/><br />
